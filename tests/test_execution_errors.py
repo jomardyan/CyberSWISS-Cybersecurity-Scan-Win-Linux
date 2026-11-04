@@ -101,3 +101,14 @@ def test_real_cli_survives_a_legacy_windows_console_encoding():
     assert completed.returncode == 0, completed.stderr
     assert "L01" in completed.stdout
     assert "Dry-run" in completed.stdout
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Bash field serialization runs on Linux CI")
+def test_bash_json_fields_escape_every_control_character():
+    original = 'quote" backslash\\ tab\t newline\n' + ''.join(chr(code) for code in range(1, 32))
+    environment = dict(os.environ, CYBERSWISS_TEST_FIELD=original)
+    script = 'source "$1"; json_escape "$CYBERSWISS_TEST_FIELD"'
+    completed = subprocess.run(["bash", "-c", script, "fixture", str(ROOT / "common/json_fields.bash")],
+                               capture_output=True, text=True, env=environment, timeout=15, check=False)
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads('"' + completed.stdout + '"') == original

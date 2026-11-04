@@ -66,6 +66,7 @@ jobs:
       - name: Run shellcheck on Linux scripts
         run: |
           find linux/ -name "*.sh" -print0 | xargs -0 -r shellcheck --severity=warning
+          shellcheck --severity=warning common/json_fields.bash
 
   # ── Linux audit scripts smoke test ───────────────────────────────────────
   linux-smoke:

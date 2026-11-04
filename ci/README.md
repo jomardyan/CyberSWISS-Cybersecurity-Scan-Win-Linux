@@ -41,3 +41,7 @@ Linux integration still executes the real audit scripts read-only.
 Command-line output preserves the active console encoding and escapes unsupported
 characters, so older Windows code pages and redirected output cannot crash banner,
 trend or drift commands. JSON report files remain UTF-8.
+
+All33 Bash audits share `common/json_fields.bash` to escape quotes, backslashes
+and control characters correctly in JSON findings. Run scripts from a complete
+checkout so this helper remains alongside `linux/`.

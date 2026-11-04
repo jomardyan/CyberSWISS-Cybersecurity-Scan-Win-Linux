@@ -12,6 +12,8 @@
 # Usage    : ./L07_ssh_posture.sh [--json] [--fix]
 # =============================================================================
 set -euo pipefail
+# shellcheck source=common/json_fields.bash
+source "$(dirname -- "${BASH_SOURCE[0]}")/../common/json_fields.bash"
 
 SCRIPT_ID="L07"
 SCRIPT_NAME="SSH Posture Check"
@@ -35,7 +37,7 @@ add_finding() {
     local id="$1" name="$2" sev="$3" status="$4" detail="$5" remediation="$6"
     local entry
     entry=$(printf '{"id":"%s","name":"%s","severity":"%s","status":"%s","detail":"%s","remediation":"%s","timestamp":"%s"}' \
-        "$id" "$name" "$sev" "$status" "$(echo "$detail" | sed 's/"/\\"/g')" "$(echo "$remediation" | sed 's/"/\\"/g')" "$TIMESTAMP")
+        "$id" "$name" "$sev" "$status" "$(json_escape "$detail")" "$(json_escape "$remediation")" "$TIMESTAMP")
     if [[ "$FINDINGS" == '[]' ]]; then FINDINGS="[$entry]"; else FINDINGS="${FINDINGS%]},${entry}]"; fi
     if [[ "$JSON_MODE" == false ]]; then
         case "$status" in

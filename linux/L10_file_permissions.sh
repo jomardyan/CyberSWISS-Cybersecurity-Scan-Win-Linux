@@ -12,6 +12,8 @@
 # Usage    : sudo ./L10_file_permissions.sh [--json] [--fix]
 # =============================================================================
 set -euo pipefail
+# shellcheck source=common/json_fields.bash
+source "$(dirname -- "${BASH_SOURCE[0]}")/../common/json_fields.bash"
 
 SCRIPT_ID="L10"
 SCRIPT_NAME="File Permissions: SUID/SGID/World-Writable"
@@ -41,16 +43,6 @@ if [[ "$FIX_MODE" == true && "$SCAN_ROOT" != / ]]; then
     echo "--root supports read-only inventories; --fix requires the default system root." >&2
     exit 3
 fi
-
-json_escape() {
-    local value="$1"
-    value=${value//\\/\\\\}
-    value=${value//\"/\\\"}
-    value=${value//$'\n'/\\n}
-    value=${value//$'\r'/\\r}
-    value=${value//$'\t'/\\t}
-    printf '%s' "$value"
-}
 
 add_finding() {
     local id="$1" name="$2" sev="$3" status="$4" detail="$5" remediation="$6"
