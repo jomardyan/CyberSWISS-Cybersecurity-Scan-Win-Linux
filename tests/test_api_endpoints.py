@@ -127,9 +127,9 @@ class TestHealthAndScripts:
         assert data["count"] == len(data["scripts"]) == 66
         assert {"id", "name", "os", "lang", "category"} <= set(data["scripts"][0])
 
-    def test_cors_headers_present(self, api_server):
+    def test_no_wildcard_cross_origin_access(self, api_server):
         _, _, headers = _get(f"{api_server}/health")
-        assert headers["Access-Control-Allow-Origin"] == "*"
+        assert "Access-Control-Allow-Origin" not in headers
 
     def test_options_preflight_returns_204(self, api_server):
         status, _, headers = _get(f"{api_server}/health", method="OPTIONS")
@@ -371,3 +371,48 @@ class TestJobRegistry:
             api._jobs.clear()
 
         assert running_kept
+
+
+class TestRequestSecurity:
+    @pytest.mark.parametrize("method", ["POST", "DELETE"])
+    def test_cross_origin_mutations_are_rejected(self, api_server, method):
+        request = urllib.request.Request(
+            f"{api_server}/scan/1" if method == "DELETE" else f"{api_server}/scan",
+            data=b"{}" if method == "POST" else None, method=method,
+            headers={"Origin": "https://untrusted.example", "Content-Type": "text/plain"},
+        )
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(request, timeout=5)
+        assert error.value.code == 403
+
+    def test_oversized_body_is_rejected_before_reading(self, api_server):
+        import http.client
+        import api
+        from urllib.parse import urlparse
+        address = urlparse(api_server)
+        connection = http.client.HTTPConnection(address.hostname, address.port, timeout=5)
+        try:
+            connection.request("POST", "/api/v1/scan", headers={"Content-Length": str(api.MAX_REQUEST_BYTES + 1)})
+            response = connection.getresponse()
+            assert response.status == 400
+            assert "1 MiB" in json.loads(response.read())["error"]
+        finally:
+            connection.close()
+
+    def test_default_bind_is_loopback(self, monkeypatch):
+        import api
+        monkeypatch.setattr(sys, "argv", ["api.py"])
+        assert api.parse_args().host == "127.0.0.1"
+
+    def test_explicit_bind_is_preserved(self, monkeypatch):
+        import api
+        monkeypatch.setattr(sys, "argv", ["api.py", "--host", "0.0.0.0"])
+        assert api.parse_args().host == "0.0.0.0"
+
+
+def test_rebound_browser_host_is_rejected(api_server):
+    request = urllib.request.Request(f"{api_server}/scan", data=b"{}", method="POST",
+                                     headers={"Host": "rebound.example", "Origin": "http://rebound.example"})
+    with pytest.raises(urllib.error.HTTPError) as error:
+        urllib.request.urlopen(request, timeout=5)
+    assert error.value.code == 403

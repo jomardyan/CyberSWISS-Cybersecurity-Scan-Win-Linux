@@ -840,8 +840,8 @@ Baselines:
 
 REST API:
   python3 common/api.py [--host HOST] [--port PORT] [--db-path FILE]
-                                Start REST API server (default: 0.0.0.0:8080;
-                                use --host 127.0.0.1 for local-only access)
+                                Start REST API server (default: 127.0.0.1:8080;
+                                remote binding requires an explicit --host and authenticated reverse proxy)
 ```
 
 ---
@@ -1070,3 +1070,5 @@ Security vulnerabilities go through [private reporting](SECURITY.md), not public
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+API JSON request bodies are limited to 1 MiB. Cross-origin browser mutations are rejected and responses no longer grant wildcard browser access. Local CLI requests without an Origin header retain their existing API contract.

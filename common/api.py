@@ -23,7 +23,7 @@ Endpoints
 
 Usage
 -----
-    python api.py                    # Start on 0.0.0.0:8080
+    python api.py                    # Start on 127.0.0.1:8080
     python api.py --port 9090        # Custom port
     python api.py --host 127.0.0.1   # Localhost only (recommended)
 
@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import ipaddress
 import logging
 import sys
 import threading
@@ -83,6 +84,7 @@ API_PREFIX = "/api/v1"
 # Completed scans remain available from the history database via /history and
 # /report/{id}; only the transient job envelope is evicted.
 MAX_FINISHED_JOBS = 100
+MAX_REQUEST_BYTES = 1024 * 1024
 
 _jobs: dict[str, dict[str, Any]] = {}
 _jobs_lock = threading.Lock()
@@ -263,8 +265,6 @@ class CyberSWISSHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        # CORS – allow browser-based tooling on the same machine
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
@@ -276,7 +276,6 @@ class CyberSWISSHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
 
@@ -290,6 +289,8 @@ class CyberSWISSHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             if length < 0:
                 return None, "Content-Length must not be negative."
+            if length > MAX_REQUEST_BYTES:
+                return None, "Request body exceeds the 1 MiB limit."
             if length == 0:
                 return {}, None
             raw = self.rfile.read(length)
@@ -315,7 +316,6 @@ class CyberSWISSHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", f"{content_type}; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
 
@@ -351,7 +351,6 @@ class CyberSWISSHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self) -> None:  # noqa: N802
         """Handle pre-flight CORS requests."""
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
@@ -385,6 +384,8 @@ class CyberSWISSHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         """Route POST requests to the appropriate handler."""
+        if not self._trusted_origin():
+            return
         parts = self._path_parts()
         if len(parts) < 3 or parts[0] != "api" or parts[1] != "v1":
             self._send_error("Not found", 404)
@@ -399,6 +400,8 @@ class CyberSWISSHandler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:  # noqa: N802
         """Route DELETE requests to the appropriate handler."""
+        if not self._trusted_origin():
+            return
         parts = self._path_parts()
         if len(parts) < 3 or parts[0] != "api" or parts[1] != "v1":
             self._send_error("Not found", 404)
@@ -412,6 +415,30 @@ class CyberSWISSHandler(BaseHTTPRequestHandler):
             self._send_error("Not found", 404)
 
     # ── Endpoint handlers ──────────────────────────────────────────────────────
+
+    def _trusted_origin(self) -> bool:
+        """Reject cross-site browser mutations; CLI clients need no Origin.
+
+        Proxies may terminate TLS, so compare origin authority with HTTP Host.
+        Remote deployments still require authentication at their reverse proxy.
+        """
+        if ipaddress.ip_address(self.server.server_address[0]).is_loopback:
+            try:
+                host = urlparse("http://" + self.headers.get("Host", "")).hostname
+                local_host = host == "localhost" or (host is not None and ipaddress.ip_address(host).is_loopback)
+            except ValueError:
+                local_host = False
+            if not local_host:
+                self._send_error("Local API requires a localhost or loopback Host.", 403)
+                return False
+        origin = self.headers.get("Origin")
+        if origin is None:
+            return True
+        parsed = urlparse(origin)
+        if parsed.scheme in {"http", "https"} and parsed.netloc.lower() == self.headers.get("Host", "").lower():
+            return True
+        self._send_error("Cross-origin mutations are not permitted.", 403)
+        return False
 
     def handle_health(self) -> None:
         """GET /api/v1/health – return service health and version."""
@@ -674,9 +701,9 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--host",
-        default="0.0.0.0",
-        help="Interface to bind to (default: 0.0.0.0).  Use 127.0.0.1 for "
-             "local-only access.",
+        default="127.0.0.1",
+        help="Interface to bind to (default: 127.0.0.1). Use an explicit host for "
+             "remote access behind an authenticated reverse proxy.",
     )
     p.add_argument(
         "--port",

@@ -621,3 +621,18 @@ ci-test: test
 
 ci-scan: scan-dry
 	$(call _ok,"CI scan (dry-run) passed.")
+
+# Local quality and source packaging commands.
+.PHONY: dev build package security
+
+dev:
+	python common/api.py
+
+build:
+	python -m compileall -q common
+
+package:
+	mkdir -p dist && git archive --format=zip --output=dist/cyberswiss-source.zip HEAD
+
+security:
+	python -m pip_audit -r requirements.txt
