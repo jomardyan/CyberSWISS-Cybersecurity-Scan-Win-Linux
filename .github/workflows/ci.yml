@@ -1,6 +1,7 @@
-name: CyberSWISS CI – Lint, Test & Audit (Linux)
+name: CyberSWISS CI – Lint, Test & Audit
 
 on:
+  workflow_dispatch:
   push:
     branches: ["**"]
   pull_request:
@@ -12,8 +13,16 @@ permissions:
 jobs:
   # ── Python lint + unit tests ──────────────────────────────────────────────
   python-tests:
-    name: Python Lint & Tests
-    runs-on: ubuntu-latest
+    name: Python Lint & Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +39,7 @@ jobs:
 
       - name: Lint (flake8)
         # Rules come from .flake8 so this matches `make lint-python` exactly.
-        run: flake8 common/ tests/
+        run: flake8 common/ tests/ ci/collect_audit.py
 
       - name: Lint (pylint)
         run: |
@@ -46,6 +55,7 @@ jobs:
   bash-lint:
     name: Bash Lint (shellcheck)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
@@ -55,12 +65,13 @@ jobs:
 
       - name: Run shellcheck on Linux scripts
         run: |
-          find linux/ -name "*.sh" -exec shellcheck --severity=warning {} \;
+          find linux/ -name "*.sh" -print0 | xargs -0 -r shellcheck --severity=warning
 
   # ── Linux audit scripts smoke test ───────────────────────────────────────
   linux-smoke:
     name: Linux Scripts Smoke Test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
@@ -69,13 +80,13 @@ jobs:
         run: chmod +x linux/*.sh
 
       - name: Run L01 password policy (non-root smoke)
-        run: bash linux/L01_password_policy.sh --json || true
+        run: python3 ci/collect_audit.py /tmp/l01.json -- bash linux/L01_password_policy.sh --json
 
       - name: Run L07 SSH posture check (non-root)
-        run: bash linux/L07_ssh_posture.sh --json || true
+        run: python3 ci/collect_audit.py /tmp/l07.json -- bash linux/L07_ssh_posture.sh --json
 
       - name: Run L15 CIS baseline (non-root, some checks will warn)
-        run: bash linux/L15_cis_baseline.sh --json || true
+        run: python3 ci/collect_audit.py /tmp/l15.json -- bash linux/L15_cis_baseline.sh --json
 
       - name: Run orchestrator dry-run
         run: python3 common/runner.py --os linux --dry-run
@@ -84,6 +95,7 @@ jobs:
   orchestrator:
     name: Orchestrator Integration
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     # security-events: write lets the SARIF upload publish findings to the
     # repository's Security → Code scanning tab.
@@ -107,12 +119,8 @@ jobs:
 
       - name: Run orchestrator – Linux, min-severity Med
         run: |
-          python3 common/runner.py \
-            --os linux \
-            --min-severity Med \
-            --output /tmp/audit_report.json \
-            --timeout 60 \
-            || true
+          python3 ci/collect_audit.py /tmp/audit_report.json -- \
+            python3 common/runner.py --json --os linux --min-severity Med --timeout 300
 
       - name: Verify JSON report was created
         run: |
@@ -131,16 +139,13 @@ jobs:
             /tmp/audit_report.json \
             --html     /tmp/audit_report.html \
             --sarif    /tmp/audit_report.sarif \
-            --markdown /tmp/audit_report.md \
-            || true
+            --markdown /tmp/audit_report.md
 
       - name: Publish findings to the job summary
-        if: always()
-        run: cat /tmp/audit_report.md >> "$GITHUB_STEP_SUMMARY" || true
+        run: cat /tmp/audit_report.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload SARIF to code scanning
-        if: always()
-        continue-on-error: true          # code scanning may not be enabled on forks
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: /tmp/audit_report.sarif
@@ -155,12 +160,13 @@ jobs:
             /tmp/audit_report.html
             /tmp/audit_report.sarif
             /tmp/audit_report.md
-          if-no-files-found: warn
+          if-no-files-found: error
 
   # ── Baseline gate: fail only on findings that are not accepted risk ───────
   baseline-gate:
     name: Baseline Gate (new findings only)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
@@ -181,10 +187,12 @@ jobs:
       - name: Run audit against the committed baseline
         run: |
           if [ -f ci/baseline.json ]; then
-            python3 common/runner.py --os linux --timeout 60 \
+            python3 common/runner.py --os linux --timeout 300 \
               --baseline ci/baseline.json --markdown - >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "No ci/baseline.json committed – reporting without waivers."
-            python3 common/runner.py --os linux --timeout 60 \
-              --markdown - >> "$GITHUB_STEP_SUMMARY" || true
+            echo "No accepted-risk baseline configured; host findings remain in the report."
+            python3 ci/collect_audit.py /tmp/baseline-observation.json -- \
+              python3 common/runner.py --json --os linux --timeout 300
+            python3 common/report_generator.py /tmp/baseline-observation.json \
+              --markdown - >> "$GITHUB_STEP_SUMMARY"
           fi

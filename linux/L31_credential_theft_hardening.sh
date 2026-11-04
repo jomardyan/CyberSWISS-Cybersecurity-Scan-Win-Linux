@@ -78,7 +78,7 @@ fi
 # ── C3: SSH private keys with weak or no permissions ─────────────────────────
 bad_key_perms=()
 while IFS= read -r keyfile; do
-    perm=$(stat -c '%a' "$keyfile" 2>/dev/null || continue)
+    perm=$(stat -c '%a' "$keyfile" 2>/dev/null) || continue
     # Private keys should be 600 or 400 at most
     if [[ "$perm" =~ ^[0-9][1-7][0-9]$ ]] || [[ "$perm" =~ ^[0-9][0-9][1-7]$ ]]; then
         bad_key_perms+=("$keyfile:$perm")

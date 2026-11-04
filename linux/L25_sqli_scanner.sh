@@ -89,7 +89,6 @@ SQLI_PATHS=("/login" "/login.php" "/signin" "/auth" "/user" "/user.php"
 SQL_ERROR_PATTERNS="(SQL syntax|mysql_fetch|ORA-[0-9]+|PG::SyntaxError|sqlite3::exception|Microsoft OLE DB|Unclosed quotation|Incorrect syntax near|pg_query|ODBC SQL|DB2 SQL|syntax error.*near)"
 
 sqli_error_found=""
-SQLI_PAYLOADS=("'" "')" "'--" "1'" "1'--" "' OR '1'='1" "1 OR 1=1" "' OR 1=1--")
 
 if command -v curl &>/dev/null && [[ "${#WEB_PORTS[@]}" -gt 0 ]]; then
     for port in "${WEB_PORTS[@]}"; do

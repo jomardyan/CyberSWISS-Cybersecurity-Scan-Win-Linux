@@ -85,8 +85,8 @@ else
 fi
 
 # ── C3: World-writable systemd unit files ────────────────────────────────────
-ww_units=$(find /etc/systemd /lib/systemd /usr/lib/systemd -name '*.service' -o -name '*.timer' 2>/dev/null \
-    | xargs -I{} sh -c 'test -w "{}" && echo "{}"' 2>/dev/null | head -10 || true)
+ww_units=$(find /etc/systemd /lib/systemd /usr/lib/systemd -type f \
+    \( -name '*.service' -o -name '*.timer' \) -perm -0002 -print 2>/dev/null | head -10 || true)
 if [[ -n "$ww_units" ]]; then
     add_finding "${SCRIPT_ID}-C3" "Writable systemd Unit Files" "Critical" "FAIL" \
         "World-writable unit files: $(echo "$ww_units" | tr '\n' ' | ')" \
@@ -151,7 +151,6 @@ kernel_ver=$(uname -r)
 kernel_base=$(echo "$kernel_ver" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' || echo "0.0.0")
 k_major=$(echo "$kernel_base" | cut -d. -f1)
 k_minor=$(echo "$kernel_base" | cut -d. -f2)
-k_patch=$(echo "$kernel_base" | cut -d. -f3)
 
 add_finding "${SCRIPT_ID}-C6" "Kernel Version" "Info" "INFO" \
     "Running kernel: ${kernel_ver}" \

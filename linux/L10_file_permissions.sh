@@ -20,21 +20,43 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 JSON_MODE=false
 FIX_MODE=false
 FINDINGS='[]'
+SCAN_ROOT=/
 
-for arg in "$@"; do
-    case "$arg" in
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
         --json) JSON_MODE=true ;;
-        --fix)  FIX_MODE=true  ;;
-        -h|--help) echo "Usage: sudo $0 [--json] [--fix]"; exit 0 ;;
-        *) echo "Unknown argument: $arg" >&2; exit 1 ;;
+        --fix)  FIX_MODE=true ;;
+        --root)
+            [[ "$#" -ge 2 && -d "$2" ]] || { echo "--root requires an existing directory" >&2; exit 3; }
+            SCAN_ROOT=$(cd -- "$2" && pwd -P)
+            shift
+            ;;
+        -h|--help) echo "Usage: sudo $0 [--json] [--fix] [--root DIRECTORY]"; exit 0 ;;
+        *) echo "Unknown argument: $1" >&2; exit 3 ;;
     esac
+    shift
 done
+
+if [[ "$FIX_MODE" == true && "$SCAN_ROOT" != / ]]; then
+    echo "--root supports read-only inventories; --fix requires the default system root." >&2
+    exit 3
+fi
+
+json_escape() {
+    local value="$1"
+    value=${value//\\/\\\\}
+    value=${value//\"/\\\"}
+    value=${value//$'\n'/\\n}
+    value=${value//$'\r'/\\r}
+    value=${value//$'\t'/\\t}
+    printf '%s' "$value"
+}
 
 add_finding() {
     local id="$1" name="$2" sev="$3" status="$4" detail="$5" remediation="$6"
     local entry
     entry=$(printf '{"id":"%s","name":"%s","severity":"%s","status":"%s","detail":"%s","remediation":"%s","timestamp":"%s"}' \
-        "$id" "$name" "$sev" "$status" "$(echo "$detail" | sed 's/"/\\"/g')" "$(echo "$remediation" | sed 's/"/\\"/g')" "$TIMESTAMP")
+        "$id" "$name" "$sev" "$status" "$(json_escape "$detail")" "$(json_escape "$remediation")" "$TIMESTAMP")
     if [[ "$FINDINGS" == '[]' ]]; then FINDINGS="[$entry]"; else FINDINGS="${FINDINGS%]},${entry}]"; fi
     if [[ "$JSON_MODE" == false ]]; then
         case "$status" in
@@ -44,6 +66,7 @@ add_finding() {
         [[ -n "$detail" ]]      && printf "       Detail : %s\n" "$detail"
         [[ "$status" != "PASS" && -n "$remediation" ]] && printf "\033[0;36m       Remedy : %s\033[0m\n" "$remediation"
     fi
+    return 0
 }
 
 # C1 – SUID binaries (exclude expected ones)
@@ -55,7 +78,44 @@ EXPECTED_SUID=(
     "/usr/bin/mount" "/usr/bin/umount"
 )
 
-suid_files=$(find / -xdev -perm -4000 -type f 2>/dev/null | sort || true)
+scope_prefix=${SCAN_ROOT%/}
+
+# Classify all five permission checks in one filesystem walk. Repeating find /
+# five times caused complete scans to time out on large CI/developer images.
+snapshot=$(mktemp)
+find_errors=$(mktemp)
+trap 'rm -f -- "$snapshot" "$find_errors"' EXIT
+find_status=0
+LC_ALL=C find "$SCAN_ROOT" -xdev \
+    \( -type f \( \
+        \( -perm -4000 -printf 's%p\0' \) , \
+        \( -perm -2000 -printf 'g%p\0' \) , \
+        \( -perm -0002 ! -path "$scope_prefix/tmp/*" ! -path "$scope_prefix/var/tmp/*" ! -path "$scope_prefix/proc/*" ! -path "$scope_prefix/sys/*" -printf 'w%p\0' \) , \
+        \( \( -nouser -o -nogroup \) -printf 'u%p\0' \) \
+    \) \) -o \
+    \( -type d -perm -0002 ! -perm -1000 ! -path "$scope_prefix/proc/*" ! -path "$scope_prefix/sys/*" ! -path "$scope_prefix/dev/*" -printf 'd%p\0' \) \
+    > "$snapshot" 2> "$find_errors" || find_status=$?
+if [[ "$find_status" -ne 0 ]]; then
+    # Unreadable paths are an explicit coverage warning, not a clean result.
+    if [[ "$find_status" -ne 1 ]] || grep -qv 'Permission denied$' "$find_errors"; then
+        cat "$find_errors" >&2
+        exit 3
+    fi
+    add_finding "${SCRIPT_ID}-C0" "Filesystem Coverage" "Med" "WARN" \
+        "Some paths below ${SCAN_ROOT} could not be read; permission checks are incomplete." \
+        "Run with sufficient read permissions and review the scan scope."
+fi
+suid_items=() sgid_count=0 ww_items=() ww_dir_items=() unowned_items=()
+while IFS= read -r -d '' record; do
+    case "${record:0:1}" in
+        s) suid_items+=("${record:1}") ;;
+        g) sgid_count=$((sgid_count + 1)) ;;
+        w) if [[ "${#ww_items[@]}" -lt 20 ]]; then ww_items+=("${record:1}"); fi ;;
+        d) if [[ "${#ww_dir_items[@]}" -lt 20 ]]; then ww_dir_items+=("${record:1}"); fi ;;
+        u) if [[ "${#unowned_items[@]}" -lt 10 ]]; then unowned_items+=("${record:1}"); fi ;;
+    esac
+done < "$snapshot"
+suid_files=$(printf '%s\n' "${suid_items[@]}")
 unexpected_suid=()
 while IFS= read -r file; do
     [[ -z "$file" ]] && continue
@@ -80,8 +140,6 @@ else
 fi
 
 # C2 – SGID binaries (flag unusual ones)
-sgid_files=$(find / -xdev -perm -2000 -type f 2>/dev/null | sort || true)
-sgid_count=$(echo "$sgid_files" | grep -c '/' || true)
 if [[ "$sgid_count" -gt 20 ]]; then
     add_finding "${SCRIPT_ID}-C2" "SGID Binaries Count" "Med" "WARN" \
         "${sgid_count} SGID files found (> 20 may warrant review)" \
@@ -92,9 +150,7 @@ else
 fi
 
 # C3 – World-writable files outside /tmp and /var/tmp
-ww_files=$(find / -xdev -perm -0002 -type f \
-    ! -path '/tmp/*' ! -path '/var/tmp/*' ! -path '/proc/*' ! -path '/sys/*' \
-    2>/dev/null | head -20 || true)
+ww_files=$(printf '%s\n' "${ww_items[@]}")
 ww_count=$(echo "$ww_files" | grep -c '/' || true)
 if [[ "$ww_count" -gt 0 ]]; then
     add_finding "${SCRIPT_ID}-C3" "World-Writable Files" "High" "FAIL" \
@@ -106,9 +162,7 @@ else
 fi
 
 # C4 – World-writable directories without sticky bit (outside /tmp)
-ww_dirs=$(find / -xdev -perm -0002 -type d ! -perm -1000 \
-    ! -path '/proc/*' ! -path '/sys/*' ! -path '/dev/*' \
-    2>/dev/null | head -20 || true)
+ww_dirs=$(printf '%s\n' "${ww_dir_items[@]}")
 ww_dir_count=$(echo "$ww_dirs" | grep -c '/' || true)
 if [[ "$ww_dir_count" -gt 0 ]]; then
     add_finding "${SCRIPT_ID}-C4" "World-Writable Dirs (no sticky)" "High" "FAIL" \
@@ -120,7 +174,7 @@ else
 fi
 
 # C5 – Unowned files
-unowned=$(find / -xdev \( -nouser -o -nogroup \) -type f 2>/dev/null | head -10 || true)
+unowned=$(printf '%s\n' "${unowned_items[@]}")
 unowned_count=$(echo "$unowned" | grep -c '/' || true)
 if [[ "$unowned_count" -gt 0 ]]; then
     add_finding "${SCRIPT_ID}-C5" "Unowned Files" "Med" "WARN" \

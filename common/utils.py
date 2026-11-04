@@ -282,6 +282,12 @@ def run_script(
         if json_mode and stdout:
             data = parse_json_output(stdout)
             if data is not None:
+                if not isinstance(data, dict) or not isinstance(data.get("findings"), list):
+                    return {"script": path.stem, "error": "JSON report is missing a findings array",
+                            "findings": [], "exit_code": exit_code}
+                if exit_code not in (0, 1, 2):
+                    return {"script": path.stem, "error": f"Unexpected script exit code {exit_code}",
+                            "findings": [], "exit_code": exit_code}
                 findings = data.get("findings", [])
                 normalised_exit_code = expected_exit_code(findings)
                 data.setdefault("script", path.stem)
@@ -304,6 +310,10 @@ def run_script(
                 "exit_code": exit_code,
                 "findings": [],
             }
+
+        if json_mode:
+            return {"script": path.stem, "error": "Script did not emit a valid JSON report",
+                    "stdout": stdout, "stderr": stderr, "exit_code": exit_code, "findings": []}
 
         return {
             "script": path.stem,

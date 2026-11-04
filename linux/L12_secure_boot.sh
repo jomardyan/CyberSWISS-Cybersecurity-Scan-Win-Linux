@@ -47,15 +47,12 @@ add_finding() {
 }
 
 # C1 – Secure Boot state (via mokutil or efivar)
-SECURE_BOOT="unknown"
 if command -v mokutil &>/dev/null; then
     sb_state=$(mokutil --sb-state 2>/dev/null || echo "")
     if echo "$sb_state" | grep -qi "SecureBoot enabled"; then
-        SECURE_BOOT="enabled"
         add_finding "${SCRIPT_ID}-C1" "Secure Boot" "High" "PASS" \
             "Secure Boot is enabled (mokutil)" ""
     elif echo "$sb_state" | grep -qi "SecureBoot disabled"; then
-        SECURE_BOOT="disabled"
         add_finding "${SCRIPT_ID}-C1" "Secure Boot" "High" "FAIL" \
             "Secure Boot is DISABLED" \
             "Enable Secure Boot in UEFI/BIOS firmware settings"

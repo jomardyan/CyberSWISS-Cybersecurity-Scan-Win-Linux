@@ -84,7 +84,7 @@ fi
 usb_history=()
 # dmesg USB events from the past 24h
 if command -v journalctl &>/dev/null; then
-    usb_history+=($(journalctl --since "24 hours ago" -k 2>/dev/null | grep -i 'usb\|mass storage\|scsi' | grep -iv 'hub\|root hub\|keyboard\|mouse\|bluetooth\|audio\|hid' | head -20 || true))
+    mapfile -t usb_history < <(journalctl --since "24 hours ago" -k 2>/dev/null | grep -i 'usb\|mass storage\|scsi' | grep -iv 'hub\|root hub\|keyboard\|mouse\|bluetooth\|audio\|hid' | head -20 || true)
 fi
 # Also check udev db
 if command -v udevadm &>/dev/null; then

@@ -60,9 +60,22 @@ def report():
 
 
 def _run_runner(*args, cwd=None):
-    """Invoke runner.py as a subprocess and return the CompletedProcess."""
+    """Run the real CLI/report pipeline with a controlled scanner I/O boundary.
+
+    Reporting tests must not depend on the workstation's OS or password policy.
+    Actual Bash/PowerShell execution is covered separately by runner and CI smoke tests.
+    """
+    source = copy.deepcopy(SAMPLE_REPORT["results"][0])
+    source["findings"].append({"id": "L01-C3", "status": "PASS", "severity": "High"})
+    bootstrap = (
+        "import sys, json, copy; "
+        f"sys.path.insert(0, {str(REPO_ROOT / 'common')!r}); import runner; "
+        f"result = json.loads({json.dumps(source)!r}); "
+        "runner.run_script = lambda *args, **kwargs: copy.deepcopy(result); "
+        "sys.exit(runner.main())"
+    )
     return subprocess.run(
-        [sys.executable, str(RUNNER), *args],
+        [sys.executable, "-c", bootstrap, "--os", "linux", *args],
         capture_output=True, text=True, timeout=180, cwd=cwd, check=False,
     )
 
@@ -83,14 +96,14 @@ class TestReportingFilters:
                     "--output", str(out))
         data = json.loads(out.read_text())
         severities = {f["severity"] for r in data["results"] for f in r["findings"]}
-        assert severities <= {"Critical"}
+        assert severities == {"Critical"}
 
     def test_unfiltered_run_keeps_lower_severities(self, tmp_path):
         out = tmp_path / "audit.json"
         _run_runner("--scripts", "L01", "--no-colour", "--output", str(out))
         data = json.loads(out.read_text())
         severities = {f["severity"] for r in data["results"] for f in r["findings"]}
-        assert severities - {"Critical"}
+        assert severities == {"Critical", "High", "Low"}
 
     def test_status_filter_shapes_counts_and_exit_code(self, tmp_path):
         out = tmp_path / "audit.json"
@@ -98,7 +111,7 @@ class TestReportingFilters:
                              "--output", str(out))
         data = json.loads(out.read_text())
         statuses = {f["status"] for r in data["results"] for f in r["findings"]}
-        assert statuses <= {"PASS"}
+        assert statuses == {"PASS"}
         assert data["fail_count"] == 0
         assert result.returncode == 0
 

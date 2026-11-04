@@ -98,7 +98,7 @@ is_known_public_resolver() {
 
 is_loopback_resolver() {
     case "$1" in
-        127.*|::1|127.0.0.53|127.0.0.54)
+        127.*|::1)
             return 0
             ;;
         *)

@@ -114,7 +114,10 @@ done
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 # Deduplicate
-unique_av=($(echo "${DETECTED_AV[@]:-}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+unique_av=()
+if [[ "${#DETECTED_AV[@]}" -gt 0 ]]; then
+    mapfile -t unique_av < <(printf '%s\n' "${DETECTED_AV[@]}" | sort -u)
+fi
 
 if [[ "${#unique_av[@]}" -gt 0 ]]; then
     add_finding "${SCRIPT_ID}-C2" "EDR/AV Agent Detected" "Critical" "PASS" \

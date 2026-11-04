@@ -77,8 +77,8 @@ if [[ "$scanner_found" == true ]]; then
     recent_report=""
     for report_dir in /var/lib/openvas /var/lib/gvm/openvas /opt/nessus/var; do
         if [[ -d "$report_dir" ]]; then
-            recent=$(find "$report_dir" -name "*.xml" -o -name "*.nessus" 2>/dev/null \
-                | xargs ls -t 2>/dev/null | head -1 || true)
+            recent=$(find "$report_dir" -type f \( -name "*.xml" -o -name "*.nessus" \) -printf '%T@ %p\0' 2>/dev/null \
+                | sort -znr | head -z -n 1 | cut -z -d ' ' -f2- | tr -d '\0' || true)
             [[ -n "$recent" ]] && recent_report="$recent"
         fi
     done
@@ -115,8 +115,8 @@ if command -v openssl &>/dev/null; then
         fi
         [[ -z "$listening" ]] && continue
 
-        cert_info=$(echo | openssl s_client -connect "localhost:${port}" -servername localhost \
-            -verify_return_error 2>/dev/null </dev/null 2>/dev/null | \
+        cert_info=$(openssl s_client -connect "localhost:${port}" -servername localhost \
+            -verify_return_error 2>/dev/null </dev/null | \
             openssl x509 -noout -dates -subject 2>/dev/null || true)
         [[ -z "$cert_info" ]] && continue
 
@@ -136,7 +136,7 @@ if command -v openssl &>/dev/null; then
 
         # Check for self-signed cert
         subject=$(echo "$cert_info" | grep 'subject=' | sed 's/subject=//' || true)
-        issuer=$(echo | openssl s_client -connect "localhost:${port}" -servername localhost 2>/dev/null </dev/null 2>/dev/null | \
+        issuer=$(openssl s_client -connect "localhost:${port}" -servername localhost 2>/dev/null </dev/null | \
             openssl x509 -noout -issuer 2>/dev/null | sed 's/issuer=//' || true)
         if [[ -n "$subject" && -n "$issuer" && "$subject" == "$issuer" ]]; then
             cert_issues="${cert_issues} port${port}:SELF-SIGNED;"
@@ -426,7 +426,6 @@ fi
 
 # Additional: check if unattended-upgrades is configured (Debian/Ubuntu)
 if command -v apt-get &>/dev/null; then
-    ua_conf="/etc/apt/apt.conf.d/50unattended-upgrades"
     ua_enabled="/etc/apt/apt.conf.d/20auto-upgrades"
     ua_active=false
     if [[ -f "$ua_enabled" ]] && grep -qE 'APT::Periodic::Unattended-Upgrade[[:space:]]+"1"' "$ua_enabled" 2>/dev/null; then

@@ -515,6 +515,8 @@ def build_consolidated_report(results: list[dict]) -> dict:
         "generated_at": now_iso(),
         "host": current_host(),
         "scripts_run": len(results),
+        "error_count": sum(bool(result.get("error") or result.get("fix_report", {}).get("verification_error"))
+                           for result in results),
         "total_findings": len(all_findings_flat),
         "fail_count": sum(1 for finding in all_findings_flat if finding.get("status") == "FAIL"),
         "warn_count": sum(1 for finding in all_findings_flat if finding.get("status") == "WARN"),
@@ -1101,6 +1103,9 @@ def main() -> int:
 
     # Exit code: 0=all pass, 1=warnings, 2=failures.
     # Findings waived by a baseline are excluded by expected_exit_code().
+    # Execution failures are operational errors, even when no findings were emitted.
+    if consolidated["error_count"]:
+        return 3
     return expected_exit_code([finding for result in all_results for finding in result.get("findings", [])])
 
 

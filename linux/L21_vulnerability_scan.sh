@@ -61,7 +61,9 @@ ver_lt() {
 
     # Compare base version components numerically (strip non-numeric suffixes per component)
     local IFS=. i
-    local a=($base1) b=($base2)
+    local a=() b=()
+    read -r -a a <<< "$base1"
+    read -r -a b <<< "$base2"
     local maxlen=$(( ${#a[@]} > ${#b[@]} ? ${#a[@]} : ${#b[@]} ))
     for (( i=0; i<maxlen; i++ )); do
         local ai="${a[i]:-0}" bi="${b[i]:-0}"

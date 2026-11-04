@@ -24,11 +24,14 @@ FINDINGS='[]'
 for arg in "$@"; do
     case "$arg" in
         --json) JSON_MODE=true ;;
-        --fix)  FIX_MODE=true  ;;
+        --fix) FIX_MODE=true ;;
         -h|--help) echo "Usage: sudo $0 [--json] [--fix]"; exit 0 ;;
         *) echo "Unknown argument: $arg" >&2; exit 1 ;;
     esac
 done
+if [[ "$FIX_MODE" == true ]]; then
+    echo "No automatic persistence changes are supported; review findings manually." >&2
+fi
 
 add_finding() {
     local id="$1" name="$2" sev="$3" status="$4" detail="$5" remediation="$6"
@@ -75,7 +78,7 @@ profile_files=(
     "/etc/environment"
 )
 # Add per-user profile files
-while IFS=: read -r uname _ uid _ _ uhome _; do
+while IFS=: read -r _uname _ uid _ _ uhome _; do
     (( uid >= 1000 || uid == 0 )) || continue
     for f in "$uhome/.bashrc" "$uhome/.bash_profile" "$uhome/.profile" "$uhome/.zshrc" "$uhome/.zprofile"; do
         [[ -f "$f" ]] && profile_files+=("$f")
