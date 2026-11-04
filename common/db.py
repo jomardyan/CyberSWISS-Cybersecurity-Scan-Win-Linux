@@ -35,7 +35,7 @@ from typing import Any
 # Ensure common/ is importable when run directly
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from utils import now_iso, REPO_ROOT  # noqa: E402
+from utils import now_iso, REPO_ROOT, configure_console_output  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -939,6 +939,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     """Command-line entry point for inspecting and pruning scan history."""
+    configure_console_output()
     args = parse_args(argv)
     database = ScanDatabase(db_path=args.db_path)
 

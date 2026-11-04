@@ -31,7 +31,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from utils import SEVERITY_ORDER, filter_findings, load_json_report, save_json_report  # noqa: E402
+from utils import (  # noqa: E402
+    SEVERITY_ORDER, filter_findings, load_json_report, save_json_report, configure_console_output,
+)
 
 
 # ── HTML Template ──────────────────────────────────────────────────────────────
@@ -582,6 +584,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    configure_console_output()
     args = parse_args()
 
     all_results: list[dict] = []

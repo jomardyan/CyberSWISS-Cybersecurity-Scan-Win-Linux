@@ -28,6 +28,13 @@ RESET = "\033[0m"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
+def configure_console_output():
+    """Keep the chosen encoding and escape unsupported console characters."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="backslashreplace")
+
+
 # ── OS Detection ───────────────────────────────────────────────────────────────
 def current_os() -> str:
     """Return 'windows', 'linux', or 'unknown'."""

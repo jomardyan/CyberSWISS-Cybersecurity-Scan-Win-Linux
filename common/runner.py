@@ -59,6 +59,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from utils import (  # noqa: E402
     SEVERITY_ORDER,
+    configure_console_output,
     current_host,
     current_os,
     discover_scripts,
@@ -748,6 +749,7 @@ def emit_trend(limit: int, no_colour: bool, json_mode: bool) -> dict | None:
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main() -> int:
+    configure_console_output()
     args = parse_args()
 
     if args.no_colour:

@@ -37,3 +37,7 @@ are read-only; system account-file checks still refer to `/etc`. Unreadable path
 are explicitly reported as incomplete coverage. The orchestration reporting tests
 use controlled scanner results so the full Python suite runs on Linux and Windows;
 Linux integration still executes the real audit scripts read-only.
+
+Command-line output preserves the active console encoding and escapes unsupported
+characters, so older Windows code pages and redirected output cannot crash banner,
+trend or drift commands. JSON report files remain UTF-8.

@@ -1,6 +1,7 @@
 """Regression checks for operational errors previously hidden by CI."""
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -89,3 +90,14 @@ def test_l10_single_pass_finds_world_writable_and_suid_files(tmp_path):
     assert str(ordinary) in findings["L10-C3"]["detail"]
     assert findings["L10-C4"]["status"] == "FAIL"
     assert str(directory) in findings["L10-C4"]["detail"]
+
+
+def test_real_cli_survives_a_legacy_windows_console_encoding():
+    environment = dict(os.environ, PYTHONIOENCODING="cp1252")
+    completed = subprocess.run([sys.executable, str(ROOT / "common/runner.py"),
+                                "--os", "linux", "--scripts", "L01", "--dry-run", "--no-colour"],
+                               capture_output=True, text=True, encoding="cp1252",
+                               env=environment, timeout=15, check=False)
+    assert completed.returncode == 0, completed.stderr
+    assert "L01" in completed.stdout
+    assert "Dry-run" in completed.stdout
