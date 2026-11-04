@@ -1072,3 +1072,8 @@ Security vulnerabilities go through [private reporting](SECURITY.md), not public
 This project is licensed under the [MIT License](LICENSE).
 
 API JSON request bodies are limited to 1 MiB. Cross-origin browser mutations are rejected and responses no longer grant wildcard browser access. Local CLI requests without an Origin header retain their existing API contract.
+
+## Copyright
+
+Copyright (c) 2026 Hayk Jomardyan - Lolisoft.
+See COPYRIGHT.md for attribution and existing license notices.
