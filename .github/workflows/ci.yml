@@ -27,6 +27,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify Makefile help and local target wiring
+        if: runner.os == 'Linux'
+        working-directory: ${{ github.workspace }}
+        run: |
+          make --no-print-directory
+          make --no-print-directory -n test build package clean
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
