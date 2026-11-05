@@ -13,6 +13,8 @@ PYTHON ?= python3
 NPM ?= npm
 COMPOSER ?= composer
 endif
+# COMPOSER names an executable here; Composer reserves its environment value for a manifest.
+unexport COMPOSER
 NODE ?= node
 PHP ?= php
 DOTNET ?= dotnet
@@ -20,7 +22,7 @@ DOTNET ?= dotnet
 RUNNER ?= common/runner.py
 REPORT_DIR ?= reports
 ARCHIVE_DIR ?= reports/archive
-TIMESTAMP = $(shell "$(PYTHON)" -c "from datetime import datetime,timezone; print(datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S'))")
+TIMESTAMP = $(eval TIMESTAMP := $(shell "$(PYTHON)" -c "from datetime import datetime,timezone; print(datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S'))"))$(TIMESTAMP)
 REPORT_BASE = $(REPORT_DIR)/cyberswiss_$(TIMESTAMP)
 SCRIPTS ?=
 MIN_SEV ?= Info
